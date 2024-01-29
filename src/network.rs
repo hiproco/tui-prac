@@ -7,28 +7,23 @@ pub fn search_peers() -> std::io::Result<UdpSocket> {
     let multicast = Ipv4Addr::new(0b11101111, 255, 2, 134);
     let port = 21340;
     assert!(multicast.is_multicast());
-    let with = |with: &str| {
-        let with = with.to_string();
-        move |e: Error| Error::new(e.kind(), with)
-    };
     let timeout = Some(std::time::Duration::from_millis(100));
 
-    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port))
-        // .into_iter()
-        .map_err(with("failed to bind"))?;
-    let s = &socket;
+    fn with<T>(with: &str) -> impl FnOnce(Error) -> Result<T, Error> {
+        let with = with.to_string();
+        move |e: Error| Err(Error::new(e.kind(), with))
+    }
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port)).or_else(with("failed to bind"))?;
+    let s = |_| Ok(&socket);
     socket
         .join_multicast_v4(&multicast, &Ipv4Addr::UNSPECIFIED)
-        .map_err(with("failed to join multicast"))
-        .and(Ok(s))?
+        .map_or_else(with("failed to join multicast"), s)?
         .set_multicast_loop_v4(false)
-        .map_err(with("failed to disable multicast loop"))
-        .and(Ok(s))?
+        .map_or_else(with("failed to disable multicast loop"), s)?
         .set_write_timeout(timeout)
-        .map_err(with("failed to set write timeout"))
-        .and(Ok(s))?
+        .map_or_else(with("failed to set write timeout"), s)?
         .set_read_timeout(timeout)
-        .map_err(with("failed to set read timeout"))?;
+        .or_else(with("failed to set read timeout"))?;
     const MSG: &[u8; 9] = b"cat-choco";
     let peers = (0..1000)
         .map(|_| -> std::io::Result<_> {
