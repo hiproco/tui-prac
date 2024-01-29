@@ -1,24 +1,22 @@
 use crossterm::{
-    event::{self, KeyCode, KeyEventKind},
-    terminal, Command, ExecutableCommand, QueueableCommand,
+    event::{self},
+    terminal, ExecutableCommand,
 };
 use ratatui::{
     prelude::*,
-    widgets::{canvas::Map, *},
+    widgets::{*},
 };
 use std::{
-    any::TypeId,
-    borrow::{BorrowMut, Cow},
+    borrow::{BorrowMut},
     cell::RefCell,
     fmt::Debug,
     fs::{File, OpenOptions},
     io::{self, prelude::*, Error, Stdout},
     iter::FromIterator,
-    mem::MaybeUninit,
     ops::{Deref, DerefMut, Not},
-    path::{Path, PathBuf},
+    path::{PathBuf},
 };
-use tui_prac::*;
+
 
 use crate::card_widgets::Card;
 
@@ -95,14 +93,14 @@ pub mod game {
         let mut players = VecDeque::from([Player::default()]);
         let mut stack = vec![Card];
         loop {
-            let Some(situation) = stack.pop() else {
+            let Some(_situation) = stack.pop() else {
                 break;
             };
             let Some(player) = players.pop_front() else {
                 break;
             };
 
-            let pass = vote(players.make_contiguous());
+            let _pass = vote(players.make_contiguous());
 
             players.push_back(player);
         }
@@ -116,14 +114,14 @@ pub mod game {
             .expect("no players to vote")
     }
 
-    fn choose(player: &Player) -> bool {
+    fn choose(_player: &Player) -> bool {
         true
     }
 }
 
 fn gameloop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), io::Error> {
-    let data = load_data(terminal)?;
-    let mut selected_tab = 0;
+    let _data = load_data(terminal)?;
+    let selected_tab = 0;
     let mut gamestate = GameState::default();
     gamestate.changed = true;
     loop {
@@ -137,9 +135,9 @@ fn gameloop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<(),
             match event::read()? {
                 Event::Key(KeyEvent {
                     code,
-                    modifiers,
+                    modifiers: _,
                     kind: KeyEventKind::Press,
-                    state,
+                    state: _,
                 }) => match code {
                     KeyCode::Char('q') => {
                         break;
@@ -304,7 +302,7 @@ fn draw_fn(selected: Selector) -> impl for<'a, 'b> FnOnce(&'a mut Frame<'b>) {
         let binding = layouts[0].split(buf.area);
         let mut areas = binding.into_iter().copied();
 
-        let selected = selected.selected_tab().unwrap_or(0);
+        let _selected = selected.selected_tab().unwrap_or(0);
         card_widgets::Card::new()
             .name("situation")
             .render(areas.next().unwrap(), buf);
@@ -508,7 +506,7 @@ mod tests {
             dbg!(i);
         });
         *a += 1;
-        let a = a.into_inner();
+        let _a = a.into_inner();
     }
 
     #[test]

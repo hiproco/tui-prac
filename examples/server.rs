@@ -23,7 +23,7 @@ fn main() -> std::io::Result<()> {
         socket
             .send_to(b"from server", (*multiaddr, 7890))
             .expect("failed to send");
-        if let Ok(recv @ (read, addr)) = socket.recv_from(buf) {
+        if let Ok(recv @ (_read, addr)) = socket.recv_from(buf) {
             eprintln!("server:{:?}", recv);
             socket
                 .send_to(b"hello from server side", addr)
@@ -67,7 +67,7 @@ fn find_peer(with: Option<u8>, port: Option<u16>) {
     for _ in 0..10000 {
         udp.send_to(b"test", socketadd).expect("failed to send");
         match udp.recv_from(buf) {
-            Ok((data, peer)) => {}
+            Ok((_data, _peer)) => {}
             Err(e) => {
                 dbg!(e);
             }

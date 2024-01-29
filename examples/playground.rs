@@ -8,7 +8,7 @@ trait ConnectionSocket: Socket {}
 trait ListenerSocket: Socket {}
 
 fn main() -> std::io::Result<()> {
-    let streams: [net::UnixStream; 2] = net::UnixStream::pair()?.try_into().expect("not pair");
+    let _streams: [net::UnixStream; 2] = net::UnixStream::pair()?.try_into().expect("not pair");
 
     struct Guard {}
     impl Drop for Guard {

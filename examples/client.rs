@@ -28,7 +28,7 @@ fn main() {
                 (Ipv4Addr::from([239, 255, 1, 234]), port),
             )
             .expect("failed to send");
-        let Ok(recv @ (msg, addr)) = socket.recv_from(buf) else {
+        let Ok(recv @ (_msg, _addr)) = socket.recv_from(buf) else {
             continue;
         };
         eprintln!("client:{:?}", recv);
