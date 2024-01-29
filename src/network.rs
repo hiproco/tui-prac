@@ -1,13 +1,5 @@
 use std::{borrow::Cow, fmt::Display, io::Error, net::UdpSocket};
 
-trait CaptureError: Sized {
-    fn pipe<A, E, F: FnOnce(&mut Self) -> Result<A, E>>(mut self, f: F) -> Result<Self, E> {
-        f(&mut self)?;
-        Ok(self)
-    }
-}
-impl<T: Sized> CaptureError for T {}
-
 // need to update for multiple peer?
 // currently search only single peer.
 pub fn search_peers() -> std::io::Result<UdpSocket> {
@@ -23,24 +15,28 @@ pub fn search_peers() -> std::io::Result<UdpSocket> {
 
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, port))
         // .into_iter()
-        .expect("failed to bind")
-        .pipe(|s| s.join_multicast_v4(&multicast, &Ipv4Addr::UNSPECIFIED))
-        .expect("failed to join multicast")
-        .pipe(|s| s.set_multicast_loop_v4(false))
-        .expect("failed to disable multicast loop")
-        .pipe(|s| s.set_write_timeout(timeout))
-        .expect("failed to set write timeout")
-        .pipe(|s| s.set_read_timeout(timeout))
-        .expect("failed to set read timeout");
+        .map_err(with("failed to bind"))?;
+    let s = Ok(socket);
+    socket
+        .join_multicast_v4(&multicast, &Ipv4Addr::UNSPECIFIED)
+        .map_err(with("failed to join multicast"))
+        .and(s)?
+        .set_multicast_loop_v4(false)
+        .map_err(with("failed to disable multicast loop"))
+        .and(s)?
+        .set_write_timeout(timeout)
+        .map_err(with("failed to set write timeout"))
+        .and(s)?
+        .set_read_timeout(timeout)
+        .map_err(with("failed to set read timeout"))?;
     const MSG: &[u8; 9] = b"cat-choco";
     let peers = (0..1000)
         .map(|_| -> std::io::Result<_> {
-            let sent = socket.send_to(MSG, (multicast, port))?;
+            let sent = s.send_to(MSG, (multicast, port))?;
             assert!(sent == MSG.len());
             let mut buf = MSG.clone();
             buf.fill(0);
-            socket
-                .recv_from(&mut buf)
+            s.recv_from(&mut buf)
                 .ok()
                 .filter(|(recv, _)| *recv == MSG.len() && buf == *MSG)
                 .map(|(_, addr)| Ok(addr))
@@ -51,10 +47,9 @@ pub fn search_peers() -> std::io::Result<UdpSocket> {
     peers
         .first()
         .ok_or(Error::other("no peer found"))
-        .and_then(|p| socket.connect(p))?;
-    socket
-        .leave_multicast_v4(&multicast, &Ipv4Addr::UNSPECIFIED)
+        .and_then(|p| s.connect(p))?;
+    s.leave_multicast_v4(&multicast, &Ipv4Addr::UNSPECIFIED)
         .expect("failed to leave multicast");
 
-    Ok(socket)
+    Ok(s)
 }
