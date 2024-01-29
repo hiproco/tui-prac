@@ -33,26 +33,25 @@ pub fn search_peers() -> std::io::Result<UdpSocket> {
         .pipe(|s| s.set_read_timeout(timeout))
         .expect("failed to set read timeout");
     const MSG: &[u8; 9] = b"cat-choco";
-    let mut counter = (0..1000);
-    let mut peers = vec![];
-    counter.try_for_each(|_| -> std::io::Result<_> {
-        let sent = socket.send_to(MSG, (multicast, port))?;
-        assert!(sent == MSG.len());
-        let mut buf = MSG.clone();
-        buf.fill(0);
-        peers.extend(
+    let peers = (0..1000)
+        .map(|_| -> std::io::Result<_> {
+            let sent = socket.send_to(MSG, (multicast, port))?;
+            assert!(sent == MSG.len());
+            let mut buf = MSG.clone();
+            buf.fill(0);
             socket
                 .recv_from(&mut buf)
                 .ok()
                 .filter(|(recv, _)| *recv == MSG.len() && buf == *MSG)
-                .map(|(_, addr)| addr),
-        );
-        Ok(())
-    })?;
-    if peers.is_empty() {
-        return Err(Error::other("no peer found"));
-    }
-    socket.connect(peers[0]).expect("failed to connect");
+                .map(|(_, addr)| Ok(addr))
+                .transpose()
+        })
+        .filter_map(|r| r.transpose())
+        .collect::<Result<Vec<SocketAddr>, _>>()?;
+    peers
+        .first()
+        .ok_or(Error::other("no peer found"))
+        .and_then(|p| socket.connect(p))?;
     socket
         .leave_multicast_v4(&multicast, &Ipv4Addr::UNSPECIFIED)
         .expect("failed to leave multicast");
