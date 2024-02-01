@@ -1,4 +1,14 @@
-use std::{borrow::Cow, fmt::Display, io::Error, net::UdpSocket};
+use std::{
+    cell::OnceCell,
+    io::{self, Error, Read, Write},
+    net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream, ToSocketAddrs, UdpSocket},
+    ops::Not,
+    sync::{
+        atomic::{self, AtomicBool},
+        Arc,
+    },
+    thread::JoinHandle,
+};
 
 // need to update for multiple peer?
 // currently search only single peer.
@@ -40,6 +50,15 @@ pub fn search_peers() -> std::io::Result<UdpSocket> {
         })
         .filter_map(|r| r.transpose())
         .collect::<Result<Vec<SocketAddr>, _>>()?;
+    // peer conections with TCP?
+    // #[cfg(false)]
+    {
+        peers
+            .iter()
+            // .into_iter()
+            .filter_map(|p| std::net::TcpStream::connect(p).ok())
+            .collect::<Vec<_>>();
+    }
     peers
         .first()
         .ok_or(Error::other("no peer found"))
@@ -49,4 +68,76 @@ pub fn search_peers() -> std::io::Result<UdpSocket> {
         .expect("failed to leave multicast");
 
     Ok(socket)
+}
+const MULTIADDR: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(0b11101111, 255, 2, 134), 21340);
+
+const PORT: u16 = 21340;
+fn local_server(atleast: usize) -> std::io::Result<Vec<TcpStream>> {
+    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))?;
+    let server_port = listener.local_addr()?.port();
+    struct Guard(Arc<AtomicBool>, Option<JoinHandle<()>>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.store(true, atomic::Ordering::Relaxed);
+            self.1.take().unwrap().join().expect("failed to join");
+        }
+    }
+    let finished = Arc::new(AtomicBool::new(false));
+    let pingerside = Arc::clone(&finished);
+    let h = std::thread::Builder::new()
+        .stack_size(1)
+        .name("pinger".into())
+        .spawn(move || pinger(server_port, pingerside))?;
+    let _g = Guard(finished, Some(h));
+    Ok(listener
+        .incoming()
+        .filter_map(|s| s.ok())
+        .filter_map(check)
+        .take(atleast)
+        .collect::<Vec<_>>())
+}
+
+fn check(mut stream: TcpStream) -> Option<TcpStream> {
+    let mut buf = [0u8; 128];
+    stream.write(b"checks").ok()?;
+    stream.read(&mut buf).ok()?;
+    Some(stream)
+}
+
+fn pinger(server_port: u16, finished: Arc<AtomicBool>) {
+    let pinger =
+        UdpSocket::bind((Ipv4Addr::UNSPECIFIED, PORT)).expect("failed to initialize pinger socket");
+    loop {
+        pinger
+            .send_to(&server_port.to_be_bytes(), MULTIADDR)
+            .expect("failed to send");
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        if finished.load(atomic::Ordering::Relaxed) {
+            break;
+        }
+    }
+}
+
+// client side
+fn connector() -> Option<TcpStream> {
+    let seeker = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, PORT)).ok()?;
+    seeker
+        .join_multicast_v4(&MULTIADDR.ip(), &Ipv4Addr::UNSPECIFIED)
+        .ok()?;
+    let mut connection = loop {
+        let mut buf = [0u8; 2];
+        if let Ok((recv, addr)) = seeker.recv_from(&mut buf) {
+            if let Ok(connected) = TcpStream::connect((addr.ip(), u16::from_be_bytes(buf))) {
+                break connected;
+            }
+        }
+    };
+    let mut buf = [0u8; 100];
+    connection.read(&mut buf).ok()?;
+    let msg = b"checks";
+    if buf[0..msg.len()] == *msg {
+        return None;
+    }
+    connection.write(b"regeister").ok()?;
+    Some(connection)
 }
